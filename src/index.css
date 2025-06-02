@@ -1,0 +1,116 @@
+/* src/index.css */
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #121212; /* Dark background */
+  color: #FFFFFF; /* White text */
+  line-height: 1.5; /* Good for readability */
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px;
+  box-sizing: border-box;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #1DB954; /* Spotify green for headings */
+    margin-top: 0;
+    margin-bottom: 1rem;
+}
+
+button {
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: background-color 0.3s ease;
+    padding: 0.75rem 1.5rem;
+    border-radius: 2rem;
+    font-weight: bold;
+    color: white;
+}
+
+ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* Basic layout classes for later */
+.container {
+    width: 100%;
+    max-width: 960px; /* Equivalent to max-w-4xl */
+    padding: 0 16px;
+}
+
+.grid-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2rem;
+}
+
+@media (min-width: 768px) {
+    .grid-layout {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+.card {
+    background-color: #1E293B; /* Darker gray */
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.timeframe-selector {
+    display: flex;
+    align-items: center;
+}
+
+.timeframe-selector select {
+    /* Styles defined inline in App.jsx for now, but can be moved here */
+}
+
+.list-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+.artist-image {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    margin-right: 10px;
+    object-fit: cover;
+}
+
+.song-artist-name {
+    color: #B0B0B0;
+    font-size: 0.9rem;
+}
+
+.list-item-detail {
+    margin-left: auto;
+    color: #1DB954; 
+    font-weight: bold;
+}
+
+.stat-value {
+    color: #1DB954;
+    font-weight: bold;
+}
+
+.note-text {
+    font-size: 0.8rem;
+    color: #9CA3AF;
+    margin-top: 1rem;
+}
