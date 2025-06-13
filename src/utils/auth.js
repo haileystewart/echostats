@@ -6,6 +6,8 @@ export const saveTokensFromBackend = (params) => {
   const refreshToken = params.get('refresh_token');
   const expiresIn = params.get('expires_in');
   const userId = params.get('user_id');
+  const displayName = params.get('display_name');
+
 
   if (accessToken) {
     localStorage.setItem('spotify_access_token', accessToken);
@@ -13,6 +15,7 @@ export const saveTokensFromBackend = (params) => {
     localStorage.setItem('spotify_expires_in', expiresIn);
     localStorage.setItem('spotify_token_expiry', (new Date().getTime() + (parseInt(expiresIn) * 1000)).toString());
     localStorage.setItem('spotify_user_id', userId);
+    localStorage.setItem('spotify_display_name', displayName);
   }
 };
 
@@ -62,7 +65,8 @@ export const removeAccessToken = () => {
   localStorage.removeItem('spotify_refresh_token');
   localStorage.removeItem('spotify_expires_in');
   localStorage.removeItem('spotify_token_expiry');
-  localStorage.removeItem('spotify_user_id'); // Ensure user ID is also cleared
+  localStorage.removeItem('spotify_user_id');
+  localStorage.removeItem('spotify_display_name'); 
 };
 
 /**

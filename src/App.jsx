@@ -1,331 +1,490 @@
 // src/App.jsx
 import React, { useEffect, useState, useCallback } from 'react';
-import { redirectToSpotifyAuth, getAccessToken, removeAccessToken, saveTokensFromBackend, getRefreshToken, refreshSpotifyToken } from './utils/auth';
-import { getTopArtists, getTopTracks, getRecentlyPlayedTracks } from './api/spotify';
+import {
+  registerUser, loginLocal, logoutUser, checkSession,
+  redirectToSpotifyAuthLink
+} from './services/frontendAuthService';
+import AuthForms from './components/AuthForms';
+import Dashboard from './components/Dashboard';
 
-// Backend URL
-const BACKEND_LOGIN_URL = 'http://127.0.0.1:8888/login';
-const BACKEND_REFRESH_URL = 'http://127.0.0.1:8888/refresh_token';
+// Backend URLs (updated)
+const BACKEND_LOGIN_LOCAL_URL = 'http://127.0.0.1:8888/login/local';
+const BACKEND_REGISTER_URL = 'http://127.0.0.1:8888/register';
+const BACKEND_LOGOUT_URL = 'http://127.0.0.1:8888/logout';
+const BACKEND_SESSION_URL = 'http://127.0.0.1:8888/session';
+const BACKEND_SPOTIFY_LINK_URL = 'http://127.0.0.1:8888/login/spotify';
+
+// Add ALL Backend API URLs for stats
 const BACKEND_LISTENING_TIME_API = 'http://127.0.0.1:8888/api/listening-time';
 const BACKEND_TOP_ARTISTS_API = 'http://127.0.0.1:8888/api/top-artists-historical';
 const BACKEND_TOP_TRACKS_API = 'http://127.0.0.1:8888/api/top-tracks-historical';
-const BACKEND_TOP_ALBUMS_API = 'http://127.0.0.1:8888/api/top-albums-historical'; //
-const BACKEND_GENRE_BREAKDOWN_API = 'http://127.0.0.1:8888/api/genre-breakdown-historical'; //
+const BACKEND_TOP_ALBUMS_API = 'http://127.0.0.1:8888/api/top-albums-historical';
+const BACKEND_GENRE_BREAKDOWN_API = 'http://127.0.0.1:8888/api/genre-breakdown-historical';
 
-// Frontend's redirect URI (for parsing tokens from backend's redirect)
-const FRONTEND_REDIRECT_URI_BASE = 'http://127.0.0.1:5173/callback';
+const FRONTEND_DASHBOARD_PATH = 'http://127.0.0.1:5173/dashboard';
 
 function App() {
-  const [accessToken, setAccessToken] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  // --- Core Authentication States ---
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [loading, setLoading] = useState(true); // Global loading for initial app startup
+  const [error, setError] = useState(null); // General error message display
+  const [spotifyLinked, setSpotifyLinked] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState('Guest');
+  const [currentLocalUserId, setCurrentLocalUserId] = useState(null);
 
-  // (We are no longer using these, but keeping them as comments for context)
-  // const [topArtistsShortTerm, setTopArtistsShortTerm] = useState([]);
-  // const [topSongsShortTerm, setTopSongsShortTerm] = useState([]);
-  // const [topArtistsMediumTerm, setTopArtistsMediumTerm] = useState([]);
-  // const [topSongsMediumTerm, setTopSongsMediumTerm] = useState([]);
-  const [minutesListened24Hrs, setMinutesListened24Hrs] = useState(0); //
-  const [minutesListened7Days, setMinutesListened7Days] = useState(0); //
+  // --- Data-specific States (passed as props to Dashboard) ---
+  const [minutesListened24Hrs, setMinutesListened24Hrs] = useState(0);
+  const [minutesListened7Days, setMinutesListened7Days] = useState(0);
+  const [minutesListened30Days, setMinutesListened30Days] = useState(0); // ADDED
+  const [minutesListened90Days, setMinutesListened90Days] = useState(0); // ADDED
+  const [minutesListened6Months, setMinutesListened6Months] = useState(0); // ADDED
+  const [minutesListened1Year, setMinutesListened1Year] = useState(0); // ADDED
+  const [minutesListenedAllTime, setMinutesListenedAllTime] = useState(0); // ADDED
 
-  const [selectedTimeframe, setSelectedTimeframe] = useState('6months'); //
-  const [historicalTopArtists, setHistoricalTopArtists] = useState([]); //
-  const [historicalTopSongs, setHistoricalTopSongs] = useState([]); //
-  const [historicalTopAlbums, setHistoricalTopAlbums] = useState([]); //
-  const [historicalGenreBreakdown, setHistoricalGenreBreakdown] = useState([]); //
+  const [selectedTimeframe, setSelectedTimeframe] = useState('7days'); // Default 7 days
 
-  // --- AUTHENTICATION LOGIC ---
+  const [historicalTopArtists, setHistoricalTopArtists] = useState([]);
+  const [historicalTopSongs, setHistoricalTopSongs] = useState([]);
+  const [historicalTopAlbums, setHistoricalTopAlbums] = useState([]);
+  const [historicalGenreBreakdown, setHistoricalGenreBreakdown] = useState([]);
 
-  const handleLogin = useCallback(() => {
-    setError(null);
-    redirectToSpotifyAuth(BACKEND_LOGIN_URL);
-  }, []);
+  // --- Granular Loading States (for individual sections within Dashboard) ---
+  const [loadingListeningTime, setLoadingListeningTime] = useState(true);
+  const [loadingTopArtists, setLoadingTopArtists] = useState(true);
+  const [loadingTopSongs, setLoadingTopSongs] = useState(true);
+  const [loadingTopAlbums, setLoadingTopAlbums] = useState(true);
+  const [loadingGenreBreakdown, setLoadingGenreBreakdown] = useState(true);
 
-  const handleLogout = useCallback(() => {
-    removeAccessToken();
-    setAccessToken(null);
-    setError(null);
-    setLoading(false);
-    window.location.href = FRONTEND_REDIRECT_URI_BASE.split('?')[0];
-  }, [FRONTEND_REDIRECT_URI_BASE]);
+  // --- Auth Form Input States (passed as props to AuthForms) ---
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [displayNameInput, setDisplayNameInput] = useState('');
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
 
-  const handleRefreshTokenAndFetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const refreshToken = getRefreshToken();
-      if (!refreshToken) {
-        throw new Error('No refresh token available. Please log in again.');
-      }
-      const newAccessToken = await refreshSpotifyToken(BACKEND_REFRESH_URL, refreshToken);
-      setAccessToken(newAccessToken);
-      await fetchData(); // Refetch data with the new token
-    } catch (err) {
-      console.error("Failed to refresh token:", err);
-      setError(err.message || "Failed to refresh token. Please log in again.");
-      setAccessToken(null); // Force re-login if refresh fails
-      removeAccessToken();
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
-  // --- DATA FETCHING LOGIC ---
-  const fetchData = useCallback(async () => {
-    setLoading(true); //
-    setError(null); //
-    try {
-      const userId = localStorage.getItem('spotify_user_id'); //
-      if (!userId) { //
-          setError("User ID not found for fetching historical data. Please log in again."); //
-          setLoading(false); //
-          return; //
-      }
+  // --- DATA FETCHING LOGIC ---
+  const fetchData = useCallback(async () => {
+    console.log("App: fetchData started."); // DEBUG
+    // Reset all granular loading states to true at the beginning of each fetch cycle
+    setLoadingListeningTime(true);
+    setLoadingTopArtists(true);
+    setLoadingTopSongs(true);
+    setLoadingTopAlbums(true);
+    setLoadingGenreBreakdown(true);
+    setError(null); // Clear any previous errors when starting a new fetch
 
-      // Fetch Minutes Listened
-      const minutes24HrsResponse = await fetch(`${BACKEND_LISTENING_TIME_API}?user_id=${userId}&timeframe=24hrs`); //
-      const data24Hrs = await minutes24HrsResponse.json(); //
-      setMinutesListened24Hrs(data24Hrs.total_minutes || 0); //
+    try {
+      const sessionStatus = await checkSession(BACKEND_SESSION_URL);
+      console.log("App: Session status from backend (inside fetchData):", sessionStatus); // DEBUG
 
-      const minutes7DaysResponse = await fetch(`${BACKEND_LISTENING_TIME_API}?user_id=${userId}&timeframe=7days`); //
-      const data7Days = await minutes7DaysResponse.json(); //
-      setMinutesListened7Days(data7Days.total_minutes || 0); //
+      // Update core authentication states
+      setIsLoggedIn(sessionStatus.loggedIn);
+      setCurrentLocalUserId(sessionStatus.userId);
+      setCurrentUserName(sessionStatus.displayName);
+      setSpotifyLinked(sessionStatus.spotifyLinked);
 
-      // Fetch Top Artists/Songs
-      const topArtistsResponse = await fetch(`${BACKEND_TOP_ARTISTS_API}?user_id=${userId}&timeframe=${selectedTimeframe}&limit=10`); //
-      const topArtistsData = await topArtistsResponse.json(); //
-      setHistoricalTopArtists(topArtistsData); //
+      if (!sessionStatus.loggedIn) {
+        console.log("App: Not logged in, aborting fetchData and clearing data."); // DEBUG
+        setError("You are not logged in locally. Please log in to EchoStats.");
+        setMinutesListened24Hrs(0); setMinutesListened7Days(0);
+        setMinutesListened30Days(0); setMinutesListened90Days(0); // CLEAR
+        setMinutesListened6Months(0); setMinutesListened1Year(0); // CLEAR
+        setMinutesListenedAllTime(0); // CLEAR
 
-      const topSongsResponse = await fetch(`${BACKEND_TOP_TRACKS_API}?user_id=${userId}&timeframe=${selectedTimeframe}&limit=10`); //
-      const topSongsData = await topSongsResponse.json(); //
-      setHistoricalTopSongs(topSongsData); //
+        setHistoricalTopArtists([]); setHistoricalTopSongs([]);
+        setHistoricalTopAlbums([]); setHistoricalGenreBreakdown([]);
+        setLoadingListeningTime(false);
+        setLoadingTopArtists(false); setLoadingTopSongs(false);
+        setLoadingTopAlbums(false); setLoadingGenreBreakdown(false);
+        return; // Stop execution
+      }
 
-      // NEW: Fetch Top Albums from Backend
-      const topAlbumsResponse = await fetch(`${BACKEND_TOP_ALBUMS_API}?user_id=${userId}&timeframe=${selectedTimeframe}&limit=5`); //
-      const topAlbumsData = await topAlbumsResponse.json(); //
-      setHistoricalTopAlbums(topAlbumsData); //
+      if (!sessionStatus.spotifyLinked) {
+        console.log("App: Spotify not linked, aborting fetchData and clearing data."); // DEBUG
+        setError("Spotify account not linked. Please link your Spotify account.");
+        setMinutesListened24Hrs(0); setMinutesListened7Days(0);
+        setMinutesListened30Days(0); setMinutesListened90Days(0); // CLEAR
+        setMinutesListened6Months(0); setMinutesListened1Year(0); // CLEAR
+        setMinutesListenedAllTime(0); // CLEAR
 
-      // NEW: Fetch Genre Breakdown from Backend
-      const genreBreakdownResponse = await fetch(`${BACKEND_GENRE_BREAKDOWN_API}?user_id=${userId}&timeframe=${selectedTimeframe}&limit=10`); //
-      const genreBreakdownData = await genreBreakdownResponse.json(); //
-      setHistoricalGenreBreakdown(genreBreakdownData); //
+        setHistoricalTopArtists([]); setHistoricalTopSongs([]);
+        setHistoricalTopAlbums([]); setHistoricalGenreBreakdown([]);
+        setLoadingListeningTime(false);
+        setLoadingTopArtists(false); setLoadingTopSongs(false);
+        setLoadingTopAlbums(false); setLoadingGenreBreakdown(false);
+        return; // Stop execution
+      }
 
-    } catch (err) {
-      console.error("Failed to fetch data:", err); //
-      // More specific error handling. If a backend API returns 400/500, log specific error
-      if (err.message.includes("401") || err.message.includes("Unauthorized")) { //
-         setError("Session expired or invalid. Attempting to refresh token..."); //
-         handleRefreshTokenAndFetch(); //
-      } else if (err.message.includes("Failed to fetch")) { //
-         setError("Network error or backend not reachable. Please ensure backend is running."); //
-      } else {
-         setError(`Failed to fetch data: ${err.message}. Please try again later.`); //
-      }
-      // Only remove access token if it's explicitly an auth issue or unrecoverable
-      if (err.message.includes("Failed to refresh token") || err.message.includes("re-authenticate")) { //
-         setAccessToken(null); //
-         removeAccessToken(); //
-      }
-    } finally {
-      setLoading(false); //
-    }
-  }, [BACKEND_LISTENING_TIME_API, BACKEND_TOP_ARTISTS_API, BACKEND_TOP_TRACKS_API, BACKEND_TOP_ALBUMS_API, BACKEND_GENRE_BREAKDOWN_API, selectedTimeframe, handleRefreshTokenAndFetch]); //
+      // --- User is logged in and Spotify linked. Proceed to fetch data. ---
+      console.log("App: User logged in and Spotify linked. Proceeding to fetch all stats..."); // DEBUG
 
-  // --- INITIAL LOAD AND CALLBACK HANDLING ---
+      // Fetch Listening Time (24 hours)
+      try {
+          console.log("App: Fetching 24hrs listening time..."); // DEBUG
+          const minutes24HrsResponse = await fetch(`${BACKEND_LISTENING_TIME_API}?timeframe=24hrs`, { credentials: 'include' });
+          if (!minutes24HrsResponse.ok) throw new Error(`HTTP error! status: ${minutes24HrsResponse.status}`);
+          const data24Hrs = await minutes24HrsResponse.json();
+          setMinutesListened24Hrs(data24Hrs.total_minutes || 0);
+          console.log("App: Fetched 24hrs listening time data:", data24Hrs); // DEBUG
+      } catch (err) {
+          console.error("App: Error fetching 24hrs listening time:", err); // DEBUG
+          setError(`Failed to load 24-hour listening time. Data might be temporarily unavailable.`);
+          setMinutesListened24Hrs(0); // Clear on error
+      } // finally handled below
 
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const accessTokenFromUrl = urlParams.get('access_token');
-    const refreshTokenFromUrl = urlParams.get('refresh_token');
-    const expiresInFromUrl = urlParams.get('expires_in');
-    const userIdFromUrl = urlParams.get('user_id'); // Ensure user_id is also retrieved from URL
+      // Fetch Listening Time (7 days)
+      try {
+          console.log("App: Fetching 7days listening time..."); // DEBUG
+          const minutes7DaysResponse = await fetch(`${BACKEND_LISTENING_TIME_API}?timeframe=7days`, { credentials: 'include' });
+          if (!minutes7DaysResponse.ok) throw new Error(`HTTP error! status: ${minutes7DaysResponse.status}`);
+          const data7Days = await minutes7DaysResponse.json();
+          setMinutesListened7Days(data7Days.total_minutes || 0);
+          console.log("App: Fetched 7days listening time data:", data7Days); // DEBUG
+      } catch (err) {
+          console.error("App: Error fetching 7days listening time:", err); // DEBUG
+          setError(`Failed to load 7-day listening time. Data might be temporarily unavailable.`);
+          setMinutesListened7Days(0); // Clear on error
+      }
 
-    const currentAccessToken = getAccessToken(); // Get token from localStorage (might be expired)
+      // ADDED: Fetch Listening Time for 30 days
+      try {
+          console.log("App: Fetching 30days listening time...");
+          const minutes30DaysResponse = await fetch(`${BACKEND_LISTENING_TIME_API}?timeframe=30days`, { credentials: 'include' });
+          if (!minutes30DaysResponse.ok) throw new Error(`HTTP error! status: ${minutes30DaysResponse.status}`);
+          const data30Days = await minutes30DaysResponse.json();
+          setMinutesListened30Days(data30Days.total_minutes || 0);
+          console.log("App: Fetched 30days listening time data:", data30Days);
+      } catch (err) {
+          console.error("App: Error fetching 30days listening time:", err);
+          setError(`Failed to load 30-day listening time. Data might be temporarily unavailable.`);
+          setMinutesListened30Days(0);
+      }
 
-    if (currentAccessToken) {
-      setAccessToken(currentAccessToken);
-      fetchData(); // Token exists, fetch data
-    } else if (accessTokenFromUrl && refreshTokenFromUrl && expiresInFromUrl && userIdFromUrl) { // Check userIdFromUrl
-      // We just returned from backend with tokens in URL
-      saveTokensFromBackend(urlParams); // Save them to localStorage
-      setAccessToken(accessTokenFromUrl);
-      // Clean the URL
-      window.history.replaceState({}, document.title, FRONTEND_REDIRECT_URI_BASE.split('?')[0]);
-      fetchData(); // Fetch data with new token
-    } else {
-      // No token and no code/tokens in URL, user needs to log in
-      setLoading(false);
-    }
-  }, [fetchData, FRONTEND_REDIRECT_URI_BASE]); // Dependencies
+      // ADDED: Fetch Listening Time for 90 days
+      try {
+          console.log("App: Fetching 90days listening time...");
+          const minutes90DaysResponse = await fetch(`${BACKEND_LISTENING_TIME_API}?timeframe=90days`, { credentials: 'include' });
+          if (!minutes90DaysResponse.ok) throw new Error(`HTTP error! status: ${minutes90DaysResponse.status}`);
+          const data90Days = await minutes90DaysResponse.json();
+          setMinutesListened90Days(data90Days.total_minutes || 0);
+          console.log("App: Fetched 90days listening time data:", data90Days);
+      } catch (err) {
+          console.error("App: Error fetching 90days listening time:", err);
+          setError(`Failed to load 90-day listening time. Data might be temporarily unavailable.`);
+          setMinutesListened90Days(0);
+      }
 
-  // --- RENDER LOGIC ---
+      // ADDED: Fetch Listening Time for 6 months
+      try {
+          console.log("App: Fetching 6months listening time...");
+          const minutes6MonthsResponse = await fetch(`${BACKEND_LISTENING_TIME_API}?timeframe=6months`, { credentials: 'include' });
+          if (!minutes6MonthsResponse.ok) throw new Error(`HTTP error! status: ${minutes6MonthsResponse.status}`);
+          const data6Months = await minutes6MonthsResponse.json();
+          setMinutesListened6Months(data6Months.total_minutes || 0);
+          console.log("App: Fetched 6months listening time data:", data6Months);
+      } catch (err) {
+          console.error("App: Error fetching 6months listening time:", err);
+          setError(`Failed to load 6-month listening time. Data might be temporarily unavailable.`);
+          setMinutesListened6Months(0);
+      }
 
-  return (
-    <div className="container">
-      <h1 className="app-title">EchoStats</h1>
+      // ADDED: Fetch Listening Time for 1 year
+      try {
+          console.log("App: Fetching 1year listening time...");
+          const minutes1YearResponse = await fetch(`${BACKEND_LISTENING_TIME_API}?timeframe=1year`, { credentials: 'include' });
+          if (!minutes1YearResponse.ok) throw new Error(`HTTP error! status: ${minutes1YearResponse.status}`);
+          const data1Year = await minutes1YearResponse.json();
+          setMinutesListened1Year(data1Year.total_minutes || 0);
+          console.log("App: Fetched 1year listening time data:", data1Year);
+      } catch (err) {
+          console.error("App: Error fetching 1year listening time:", err);
+          setError(`Failed to load 1-year listening time. Data might be temporarily unavailable.`);
+          setMinutesListened1Year(0);
+      }
 
-      {loading ? (
-        <p className="loading-message">Loading your stats...</p>
-      ) : accessToken ? (
-        // If authenticated, show dashboard
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-            {/* Timeframe Selector */}
-            <div className="timeframe-selector">
-                <label htmlFor="timeframe-select" style={{ marginRight: '10px', color: '#9CA3AF' }}>Show stats for:</label>
-                <select
-                    id="timeframe-select"
-                    value={selectedTimeframe}
-                    onChange={(e) => setSelectedTimeframe(e.target.value)}
-                    style={{
-                        padding: '8px 12px',
-                        borderRadius: '5px',
-                        border: '1px solid #333',
-                        backgroundColor: '#1E293B',
-                        color: '#FFFFFF',
-                        cursor: 'pointer'
-                    }}
-                >
-                    <option value="24hrs">Last 24 Hours</option>
-                    <option value="7days">Last 7 Days</option>
-                    <option value="30days">Last 30 Days</option>
-                    <option value="90days">Last 90 Days</option>
-                    <option value="6months">Last 6 Months</option>
-                    <option value="1year">Last 1 Year</option>
-                    <option value="all_time">All Time</option>
-                </select>
-            </div>
-            <button onClick={handleLogout} className="logout-button">
-                Logout
-            </button>
-          </div>
+      // ADDED: Fetch Listening Time for All Time
+      try {
+          console.log("App: Fetching all_time listening time...");
+          const minutesAllTimeResponse = await fetch(`${BACKEND_LISTENING_TIME_API}?timeframe=all_time`, { credentials: 'include' });
+          if (!minutesAllTimeResponse.ok) throw new Error(`HTTP error! status: ${minutesAllTimeResponse.status}`);
+          const dataAllTime = await minutesAllTimeResponse.json();
+          setMinutesListenedAllTime(dataAllTime.total_minutes || 0);
+          console.log("App: Fetched all_time listening time data:", dataAllTime);
+      } catch (err) {
+          console.error("App: Error fetching all_time listening time:", err);
+          setError(`Failed to load all-time listening time. Data might be temporarily unavailable.`);
+          setMinutesListenedAllTime(0);
+      } finally { // This finally block now covers all listening time fetches
+          setLoadingListeningTime(false);
+      }
 
-          {error && (
-            <div className="error-message card" style={{ backgroundColor: '#BE123C', color: 'white', marginBottom: '1rem' }}>
-              <p>{error}</p>
-              {!accessToken && (
-                <button onClick={handleLogin} className="login-button" style={{ marginTop: '1rem', backgroundColor: '#EF4444' }}>
-                  Login with Spotify
-                </button>
-              )}
-              {accessToken && error.includes("refresh") && (
-                <button onClick={handleRefreshTokenAndFetch} className="login-button" style={{ marginTop: '1rem', backgroundColor: '#BE123C' }}>
-                  Try Refresh Again
-                </button>
-              )}
-            </div>
-          )}
+      // Fetch Top Artists (historical)
+      try {
+          console.log("App: Fetching top artists..."); // DEBUG
+          const topArtistsResponse = await fetch(`${BACKEND_TOP_ARTISTS_API}?timeframe\=${selectedTimeframe}&limit=10`, { credentials: 'include' });
+          if (!topArtistsResponse.ok) throw new Error(`HTTP error! status: ${topArtistsResponse.status}`);
+          const topArtistsData = await topArtistsResponse.json();
+          setHistoricalTopArtists(topArtistsData || []); // Ensure array
+          console.log("App: Fetched Top Artists data:", topArtistsData); // DEBUG
+      } catch (err) {
+          console.error("App: Error fetching top artists:", err); // DEBUG
+          setError(`Failed to load top artists. Data might be temporarily unavailable.`);
+          setHistoricalTopArtists([]); // Reset to empty array on error
+      } finally { setLoadingTopArtists(false); }
 
-          {!error || (error && accessToken) ? (
-            <div className="grid-layout">
-              {/* Listening Time card - now entirely from backend */}
-              <div className="card">
-                <h2 className="card-title">Listening Time</h2>
-                <p className="stat-text">Last 24 Hours: <span className="stat-value">{minutesListened24Hrs}</span> minutes</p>
-                <p className="stat-text">Last 7 Days: <span className="stat-value">{minutesListened7Days}</span> minutes</p>
-                <p className="note-text">
-                  (Data sourced from your backend's historical collection.)
-                </p>
-              </div>
+      // Fetch Top Songs (historical)
+      try {
+          console.log("App: Fetching top songs..."); // DEBUG
+          const topSongsResponse = await fetch(`${BACKEND_TOP_TRACKS_API}?timeframe\=${selectedTimeframe}&limit=10`, { credentials: 'include' });
+          if (!topSongsResponse.ok) throw new Error(`HTTP error! status: ${topSongsResponse.status}`);
+          const topSongsData = await topSongsResponse.json();
+          setHistoricalTopSongs(topSongsData || []); // Ensure array
+          console.log("App: Fetched Top Songs data:", topSongsData); // DEBUG
+      } catch (err) {
+          console.error("App: Error fetching top songs:", err); // DEBUG
+          setError(`Failed to load top songs. Data might be temporarily unavailable.`);
+          setHistoricalTopSongs([]); // Reset to empty array on error
+      } finally { setLoadingTopSongs(false); }
 
-              {/* Top Artists (Historical) */}
-              <div className="card">
-                <h2 className="card-title">Top Artists ({selectedTimeframe === 'all_time' ? 'All Time' : `Last ${selectedTimeframe.replace('days', ' Days').replace('months', ' Months').replace('year', ' Year').replace('hrs', ' Hours')}`})</h2>
-                {historicalTopArtists.length > 0 ? (
-                    <ul>
-                        {historicalTopArtists.map((artist) => (
-                            <li key={artist.id} className="list-item">
-                                {artist.images && artist.images[0] && (
-                                    <img src={artist.images[0].url} alt={artist.name} className="artist-image" />
-                                )}
-                                <span>{artist.name}</span>
-                                {artist.total_minutes_listened !== undefined && (
-                                    <span className="list-item-detail"> ({artist.total_minutes_listened} min)</span>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p className="stat-text">No top artists found for this period in your historical data. Keep listening to populate!</p>
-                )}
-              </div>
+      // Fetch Top Albums (historical)
+      try {
+          console.log("App: Fetching top albums..."); // DEBUG
+          const topAlbumsResponse = await fetch(`${BACKEND_TOP_ALBUMS_API}?timeframe\=${selectedTimeframe}&limit=5`, { credentials: 'include' });
+          if (!topAlbumsResponse.ok) throw new Error(`HTTP error! status: ${topAlbumsResponse.status}`);
+          const topAlbumsData = await topAlbumsResponse.json();
+          setHistoricalTopAlbums(topAlbumsData || []); // Ensure array
+          console.log("App: Fetched Top Albums data:", topAlbumsData); // DEBUG
+      } catch (err) {
+          console.error("App: Error fetching top albums:", err); // DEBUG
+          setError(`Failed to load top albums. Data might be temporarily unavailable.`);
+          setHistoricalTopAlbums([]); // Reset to empty array on error
+      } finally { setLoadingTopAlbums(false); }
 
-              {/* Top Songs (Historical) */}
-              <div className="card">
-                <h2 className="card-title">Top Songs ({selectedTimeframe === 'all_time' ? 'All Time' : `Last ${selectedTimeframe.replace('days', ' Days').replace('months', ' Months').replace('year', ' Year').replace('hrs', ' Hours')}`})</h2>
-                {historicalTopSongs.length > 0 ? (
-                    <ul>
-                        {historicalTopSongs.map((track) => (
-                            <li key={track.id} className="stat-text">
-                                {track.name} by <span className="song-artist-name">{track.artists.map(a => a.name).join(', ')}</span>
-                                {track.total_minutes_listened !== undefined && (
-                                    <span className="list-item-detail"> ({track.total_minutes_listened} min)</span>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p className="stat-text">No top songs found for this period in your historical data. Keep listening to populate!</p>
-                )}
-              </div>
+      // Fetch Genre Breakdown (historical)
+      try {
+          console.log("App: Fetching genre breakdown..."); // DEBUG
+          const genreBreakdownResponse = await fetch(`${BACKEND_GENRE_BREAKDOWN_API}?timeframe\=${selectedTimeframe}&limit=10`, { credentials: 'include' });
+          if (!genreBreakdownResponse.ok) throw new Error(`HTTP error! status: ${genreBreakdownResponse.status}`);
+          const genreBreakdownData = await genreBreakdownResponse.json();
+          setHistoricalGenreBreakdown(genreBreakdownData || []); // Ensure array
+          console.log("App: Fetched Genre Breakdown data:", genreBreakdownData); // DEBUG
+      } catch (err) {
+          console.error("App: Error fetching genre breakdown:", err); // DEBUG
+          setError(`Failed to load genre breakdown. Data might be temporarily unavailable.`);
+          setHistoricalGenreBreakdown([]); // Reset to empty array on error
+      } finally { setLoadingGenreBreakdown(false); }
 
-              {/* NEW: Top Albums (Historical) */}
-              <div className="card">
-                <h2 className="card-title">Top Albums ({selectedTimeframe === 'all_time' ? 'All Time' : `Last ${selectedTimeframe.replace('days', ' Days').replace('months', ' Months').replace('year', ' Year').replace('hrs', ' Hours')}`})</h2>
-                {historicalTopAlbums.length > 0 ? ( //
-                    <ul> //
-                        {historicalTopAlbums.map((album) => ( //
-                            <li key={album.id} className="list-item"> //
-                                {album.images && album.images[0] && ( //
-                                    <img src={album.images[0].url} alt={album.name} className="artist-image" style={{ borderRadius: '5px' }} /> //
-                                )}
-                                <span>{album.name} by {album.artists.map(a => a.name).join(', ')}</span>
-                                {album.total_minutes_listened !== undefined && ( //
-                                    <span className="list-item-detail"> ({album.total_minutes_listened} min)</span> //
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p className="stat-text">No top albums found for this period in your historical data. Keep listening to populate!</p> //
-                )}
-              </div>
+    } catch (err) {
+      console.error("App: Overall data fetching or session error (caught by outer try-catch):", err); // DEBUG
+      setError(`An unexpected error occurred during data load: ${err.message}. Please ensure backend is running.`);
+      // Ensure all loading states are off and data is cleared on overall error
+      setLoadingListeningTime(false);
+      setLoadingTopArtists(false); setLoadingTopSongs(false);
+      setLoadingTopAlbums(false); setLoadingGenreBreakdown(false);
+      setMinutesListened24Hrs(0); setMinutesListened7Days(0);
+      setHistoricalTopArtists([]); setHistoricalTopSongs([]);
+      setHistoricalTopAlbums([]); setHistoricalGenreBreakdown([]);
+    } finally {
+      setLoading(false); // Global loading false
+      console.log("App: fetchData completed. Global loading set to false."); // DEBUG
+    }
+  }, [
+      BACKEND_LISTENING_TIME_API, BACKEND_TOP_ARTISTS_API, BACKEND_TOP_TRACKS_API,
+      BACKEND_TOP_ALBUMS_API, BACKEND_GENRE_BREAKDOWN_API, selectedTimeframe
+  ]);
 
-              {/* NEW: Genre Breakdown (Historical) */}
-              <div className="card">
-                <h2 className="card-title">Genre Breakdown ({selectedTimeframe === 'all_time' ? 'All Time' : `Last ${selectedTimeframe.replace('days', ' Days').replace('months', ' Months').replace('year', ' Year').replace('hrs', ' Hours')}`})</h2>
-                {historicalGenreBreakdown.length > 0 ? ( //
-                    <ul> //
-                        {historicalGenreBreakdown.map((genreItem, index) => ( //
-                            <li key={genreItem.genre || index} className="stat-text" style={{ marginBottom: '5px' }}> //
-                                <span style={{ textTransform: 'capitalize' }}>{genreItem.genre.replace(/-/g, ' ')}</span>
-                                {genreItem.total_minutes !== undefined && ( //
-                                    <span className="list-item-detail"> ({genreItem.total_minutes} min)</span> //
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                ) : (
-                    <p className="stat-text">No genre data found for this period in your historical data. Keep listening to populate!</p> //
-                )}
-              </div>
-              {/* No more placeholder cards, these are now implemented */}
-            </div>
-          ) : null}
-        </div>
-      ) : (
-        // If not authenticated, show the login button
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ fontSize: '1.125rem', marginBottom: '1rem' }}>
-            Connect with Spotify to see your listening stats!
-          </p>
-          <button onClick={handleLogin} className="login-button">
-            Login with Spotify
-          </button>
-        </div>
-      )}
-    </div>
-  );
+  // --- AUTHENTICATION HANDLERS ---
+  const handleAuthSubmit = useCallback(async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    console.log("App: handleAuthSubmit called."); // DEBUG
+
+    try {
+      let response;
+      if (isRegisterMode) {
+        response = await registerUser(BACKEND_REGISTER_URL, usernameInput, passwordInput, displayNameInput);
+        console.log("App: Registered user response:", response); // DEBUG
+      } else {
+        response = await loginLocal(BACKEND_LOGIN_LOCAL_URL, usernameInput, passwordInput);
+        console.log("App: Logged in local user response:", response); // DEBUG
+      }
+      setIsLoggedIn(true);
+      setCurrentLocalUserId(response.userId);
+      setCurrentUserName(response.displayName);
+      setSpotifyLinked(false); // Reset this, will be updated by fetchData
+      window.history.replaceState({}, document.title, FRONTEND_DASHBOARD_PATH);
+      fetchData(); // Trigger data fetch after successful login
+
+    } catch (err) {
+      console.error("App: Auth error (handleAuthSubmit):", err); // DEBUG
+      setError(err.message || "Authentication failed.");
+      setIsLoggedIn(false);
+      setCurrentLocalUserId(null);
+      setCurrentUserName('Guest');
+      setSpotifyLinked(false);
+    } finally {
+      setLoading(false);
+      console.log("App: handleAuthSubmit completed."); // DEBUG
+    }
+  }, [usernameInput, passwordInput, displayNameInput, isRegisterMode, fetchData]);
+
+  const handleLogout = useCallback(async () => {
+    console.log("App: handleLogout called."); // DEBUG
+    setLoading(true);
+    setError(null);
+    try {
+      await logoutUser(BACKEND_LOGOUT_URL);
+      setIsLoggedIn(false);
+      setCurrentLocalUserId(null);
+      setCurrentUserName('Guest');
+      setSpotifyLinked(false);
+      setMinutesListened24Hrs(0); setMinutesListened7Days(0);
+      setHistoricalTopArtists([]); setHistoricalTopSongs([]);
+      setHistoricalTopAlbums([]); setHistoricalGenreBreakdown([]);
+      window.history.replaceState({}, document.title, '/');
+      console.log("App: User logged out and data cleared."); // DEBUG
+    } catch (err) {
+      console.error("App: Logout error:", err); // DEBUG
+      setError(err.message || "Logout failed.");
+    } finally {
+      setLoading(false);
+      console.log("App: handleLogout completed."); // DEBUG
+    }
+  }, [BACKEND_LOGOUT_URL]); // Dependency for handleLogout. Setters are stable.
+
+  const handleLinkSpotify = useCallback(() => {
+    console.log("App: handleLinkSpotify called. Redirecting to backend Spotify auth."); // DEBUG
+    setError(null);
+    redirectToSpotifyAuthLink(BACKEND_SPOTIFY_LINK_URL);
+  }, [BACKEND_SPOTIFY_LINK_URL]); // Dependency for handleLinkSpotify
+
+
+  // --- INITIAL LOAD AND SESSION CHECK ---
+  useEffect(() => {
+    const checkInitialSessionAndFetch = async () => {
+      console.log("App: useEffect - Initial session check started."); // DEBUG
+      setLoading(true);
+      setError(null);
+
+      try {
+        const sessionStatus = await checkSession(BACKEND_SESSION_URL);
+        console.log("App: Initial session status from backend (in useEffect):", sessionStatus); // DEBUG
+
+        setIsLoggedIn(sessionStatus.loggedIn);
+        setCurrentLocalUserId(sessionStatus.userId);
+        setCurrentUserName(sessionStatus.displayName);
+        setSpotifyLinked(sessionStatus.spotifyLinked);
+
+        if (sessionStatus.loggedIn && sessionStatus.spotifyLinked) {
+          console.log("App: Logged in and Spotify linked. Calling fetchData."); // DEBUG
+          fetchData();
+        } else if (sessionStatus.loggedIn && !sessionStatus.spotifyLinked) {
+          console.log("App: Logged in but Spotify not linked. Showing link prompt. Setting global loading to false."); // DEBUG
+          setLoading(false);
+        } else {
+          console.log("App: Not logged in. Showing auth forms. Setting global loading to false."); // DEBUG
+          const urlParams = new URLSearchParams(window.location.search);
+          if (urlParams.has('error')) {
+              setError(urlParams.get('message') || 'An authentication error occurred.');
+              window.history.replaceState({}, document.title, '/');
+          }
+          setLoading(false);
+        }
+
+        // Clean up URL if it came from Spotify callback
+        if (window.location.pathname === '/dashboard' || window.location.search.includes('code') || window.location.search.includes('access_token')) {
+            console.log("App: Cleaning URL to dashboard path."); // DEBUG
+            window.history.replaceState({}, document.title, FRONTEND_DASHBOARD_PATH);
+        }
+
+      } catch (err) {
+        console.error("App: Initial session check error (critical) - caught by useEffect:", err); // DEBUG
+        setError(err.message || "Failed to check session. Please ensure backend is running and reachable.");
+        setIsLoggedIn(false);
+        setCurrentLocalUserId(null);
+        setCurrentUserName('Guest');
+        setSpotifyLinked(false);
+        setLoading(false);
+      }
+    };
+
+    checkInitialSessionAndFetch();
+  }, [fetchData]); // Dependency: fetchData (it's a useCallback, so it's stable)
+
+  // --- Auto-Refresh Data Interval ---
+  useEffect(() => {
+    let intervalId;
+    if (isLoggedIn && spotifyLinked) {
+      console.log("App: Auto-refresh interval set up."); // DEBUG
+      intervalId = setInterval(() => {
+        console.log("App: Auto-refreshing data..."); // DEBUG
+        fetchData();
+      }, 5 * 60 * 1000); // 5 minutes refresh
+    } else {
+        console.log("App: Auto-refresh interval cleared/not set. isLoggedIn:", isLoggedIn, "spotifyLinked:", spotifyLinked); // DEBUG
+        // Ensure interval is cleared if it exists when conditions are not met
+        if (intervalId) { // Check if intervalId has a value before trying to clear
+             clearInterval(intervalId);
+             intervalId = null; // Set to null to prevent stale closure issues
+        }
+    }
+
+    return () => {
+      if (intervalId) {
+        console.log("App: Clearing auto-refresh interval on unmount/dependency change."); // DEBUG
+        clearInterval(intervalId);
+      }
+    };
+  }, [isLoggedIn, spotifyLinked, fetchData]);
+
+
+  // --- MAIN RENDER LOGIC ---
+  return (
+    <div className="container">
+      <h1 className="app-title">EchoStats for {currentUserName}</h1>
+
+      {console.log("App: Rendering. isLoggedIn:", isLoggedIn, "loading:", loading, "handleLogout type:", typeof handleLogout)} {/* ADD THIS DEBUG */}
+
+      {loading ? (
+        <p className="loading-message">Loading app...</p>
+      ) : isLoggedIn ? (
+        <Dashboard
+          currentUserName={currentUserName}
+          selectedTimeframe={selectedTimeframe}
+          setSelectedTimeframe={setSelectedTimeframe}
+          handleLogout={handleLogout}
+          error={error}
+          spotifyLinked={spotifyLinked}
+          handleLinkSpotify={handleLinkSpotify}
+          minutesListened24Hrs={minutesListened24Hrs}
+          minutesListened7Days={minutesListened7Days}
+          historicalTopArtists={historicalTopArtists}
+          historicalTopSongs={historicalTopSongs}
+          historicalTopAlbums={historicalTopAlbums}
+          historicalGenreBreakdown={historicalGenreBreakdown}
+          loadingListeningTime={loadingListeningTime}
+          loadingTopArtists={loadingTopArtists}
+          loadingTopSongs={loadingTopSongs}
+          loadingTopAlbums={loadingTopAlbums}
+          loadingGenreBreakdown={loadingGenreBreakdown}
+        />
+      ) : (
+        <AuthForms
+          onAuthSubmit={handleAuthSubmit}
+          isRegisterMode={isRegisterMode}
+          setIsRegisterMode={setIsRegisterMode}
+          error={error}
+          usernameInput={usernameInput}
+          setUsernameInput={setUsernameInput}
+          passwordInput={passwordInput}
+          setPasswordInput={setPasswordInput}
+          displayNameInput={displayNameInput}
+          setDisplayNameInput={setDisplayNameInput}
+        />
+      )}
+    </div>
+  );
 }
 
 export default App;
