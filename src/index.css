@@ -6,7 +6,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #121212; /* Dark background */
+  background-color: #181818; /* Dark background */
   color: #FFFFFF; /* White text */
   line-height: 1.5; /* Good for readability */
 }
@@ -31,10 +31,11 @@ button {
     border: none;
     outline: none;
     transition: background-color 0.3s ease;
+    background-color: #ADADAD; /* Darker gray */
     padding: 0.75rem 1.5rem;
     border-radius: 2rem;
     font-weight: bold;
-    color: white;
+    color: #181818;
 }
 
 ul {
@@ -63,7 +64,7 @@ ul {
 }
 
 .card {
-    background-color: #1E293B; /* Darker gray */
+    background-color: #1F1F1F; /* Darker gray */
     padding: 1.5rem;
     border-radius: 0.5rem;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -78,39 +79,83 @@ ul {
     /* Styles defined inline in App.jsx for now, but can be moved here */
 }
 
+/* Dynamic StatCard Layout */
 .list-item {
     display: flex;
     align-items: center;
-    margin-bottom: 8px;
+    margin-bottom: 2px;
     font-size: 0.95rem;
+    gap: 12px; /* Space between elements */
+    padding: 5px 0;
+}
+
+.list-item:last-child {
+    border-bottom: none; /* Remove border from last item */
+    margin-bottom: 0;
+}
+
+/* Image takes up ~15% */
+.artist-image,
+.album-image {
+    width: 45px;
+    height: 45px;
+    border-radius: 6px; /* Slightly rounded corners for albums, will be overridden for artists */
+    object-fit: cover;
+    flex-shrink: 0;
+    flex-basis: 45px; /* Fixed width */
 }
 
 .artist-image {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    margin-right: 10px;
-    object-fit: cover;
+    border-radius: 50%; /* Circular for artists */
 }
 
-.song-artist-name {
-    color: #B0B0B0;
-    font-size: 0.9rem;
+/* Main content (song/artist/album name) takes up ~75% */
+.list-item-content {
+    flex: 1; /* Takes up remaining space after image and minutes */
+    min-width: 0; /* Allows text to truncate properly */
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
 }
 
-.artist-image,
-.album-image { /* Apply same styles to both classes */
-    width: 40px; /* Set a fixed width */
-    height: 40px; /* Set a fixed height */
-    border-radius: 50%; /* Make artist images round */
-    object-fit: cover; /* Ensures the image covers the area without distortion */
-    margin-right: 10px; /* Space between image and text */
-    flex-shrink: 0; /* Prevent images from shrinking on small screens */
+.list-item-title {
+    font-weight: 500;
+    color: #FFFFFF;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.3;
 }
+
+.list-item-subtitle {
+    color: #ADADAD;
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.25;
+}
+
+/* Minutes takes up ~20% */
 .list-item-detail {
-    margin-left: auto;
-    color: #1DB954; 
-    font-weight: bold;
+    flex-shrink: 0;
+    color: #1DB954;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-align: right;
+    min-width: 60px; /* Ensures consistent alignment */
+}
+
+/* Legacy support for existing simple list items */
+.list-item > span:not(.list-item-detail) {
+    flex: 1;
+    min-width: 0;
+}
+
+.song-artist-name,
+.album-artist-name {
+    color: #ADADAD;
+    font-size: 0.9rem;
 }
 
 .stat-value {
@@ -118,10 +163,34 @@ ul {
     font-weight: bold;
 }
 
+.stat-text {
+    margin-bottom: 8px;
+    line-height: 1.75;
+}
+
 .note-text {
     font-size: 0.8rem;
     color: #9CA3AF;
     margin-top: 1rem;
+    font-style: italic;
+}
+
+/* No data message styling */
+.no-data-message {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: #9CA3AF;
+}
+
+.no-data-message .stat-text {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    color: #FFFFFF;
+}
+
+.no-data-message .note-text {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
 }
 
 .loading-message {
@@ -135,7 +204,7 @@ ul {
 /* Basic CSS for a spinning indicator */
 .loading-message::before {
     content: '';
-    border: 4px solid #f3f3f3; /* Light grey */
+    border: 4px solid rgba(255, 255, 255, 0.1); /* Light grey */
     border-top: 4px solid #1DB954; /* Spotify green */
     border-radius: 50%;
     width: 20px;
@@ -149,4 +218,28 @@ ul {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+    .list-item {
+        font-size: 0.9rem;
+        gap: 8px;
+    }
+    
+    .artist-image,
+    .album-image {
+        width: 40px;
+        height: 40px;
+        flex-basis: 40px;
+    }
+    
+    .list-item-detail {
+        min-width: 50px;
+        font-size: 0.85rem;
+    }
+    
+    .list-item-subtitle {
+        font-size: 0.8rem;
+    }
 }

@@ -10,13 +10,20 @@ function Dashboard({
   error,
   spotifyLinked,
   handleLinkSpotify,
-  minutesListened24Hrs,
-  minutesListened7Days,
-  minutesListened30Days, 
-  minutesListened90Days, 
-  minutesListened6Months, 
-  minutesListened1Year, 
-  minutesListenedAllTime, 
+  
+  // All the individual timeframe listening data
+  minutesListenedAllTime,
+  minutesListenedToday, 
+  minutesListenedYesterday, 
+  minutesListenedThisWeek, 
+  minutesListenedLastWeek, 
+  minutesListenedThisMonth, 
+  minutesListenedLastMonth, 
+  minutesListenedLast3Months, 
+  minutesListenedLast6Months, 
+  minutesListenedThisYear,
+  minutesListenedLastYear, 
+
   loadingListeningTime,
   historicalTopArtists,
   historicalTopSongs,
@@ -27,10 +34,56 @@ function Dashboard({
   loadingTopAlbums,
   loadingGenreBreakdown
 }) {
-  console.log("Dashboard: Component rendered. Props received (AGAINST ERROR):", {
+  console.log("Dashboard: Component rendered. Props received:", {
+    selectedTimeframe,
+    historicalTopArtists, 
+    historicalTopSongs,
+    historicalTopAlbums,
     historicalGenreBreakdown, 
     loadingGenreBreakdown
   });
+
+  // Helper function to get the current listening time based on selected timeframe
+  const getCurrentListeningTime = () => {
+    switch(selectedTimeframe) {
+      case 'today': return minutesListenedToday;
+      case 'yesterday': return minutesListenedYesterday;
+      case 'this_week': return minutesListenedThisWeek;
+      case 'last_week': return minutesListenedLastWeek;
+      case 'this_month': return minutesListenedThisMonth;
+      case 'last_month': return minutesListenedLastMonth;
+      case 'last_3_months': return minutesListenedLast3Months;
+      case 'last_6_months': return minutesListenedLast6Months;
+      case 'this_year': return minutesListenedThisYear;
+      case 'last_year': return minutesListenedLastYear;
+      case 'all_time': return minutesListenedAllTime;
+      default: return 0;
+    }
+  };
+
+  // Check if current timeframe has any listening data
+  const hasListeningData = () => {
+    const currentMinutes = getCurrentListeningTime();
+    return currentMinutes && currentMinutes > 0;
+  };
+
+  // Helper function to format timeframe for display
+  const formatTimeframeDisplay = (timeframe) => {
+    const timeframeMap = {
+      'today': 'Today',
+      'yesterday': 'Yesterday',
+      'this_week': 'This Week',
+      'last_week': 'Last Week',
+      'this_month': 'This Month',
+      'last_month': 'Last Month',
+      'last_3_months': 'Last 3 Months',
+      'last_6_months': 'Last 6 Months',
+      'this_year': 'This Year',
+      'last_year': 'Last Year',
+      'all_time': 'All Time'
+    };
+    return timeframeMap[timeframe] || timeframe;
+  };
 
   return (
     <div>
@@ -46,17 +99,21 @@ function Dashboard({
                     padding: '8px 12px',
                     borderRadius: '5px',
                     border: '1px solid #333',
-                    backgroundColor: '#1E293B',
+                    backgroundColor: '#1F1F1F',
                     color: '#FFFFFF',
                     cursor: 'pointer'
                 }}
             >
-                <option value="24hrs">Last 24 Hours</option>
-                <option value="7days">Last 7 Days</option>
-                <option value="30days">Last 30 Days</option>
-                <option value="90days">Last 90 Days</option>
-                <option value="6months">Last 6 Months</option>
-                <option value="1year">Last 1 Year</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="this_week">This Week</option>
+                <option value="last_week">Last Week</option>
+                <option value="this_month">This Month</option>
+                <option value="last_month">Last Month</option>
+                <option value="last_3_months">Last 3 Months</option>
+                <option value="last_6_months">Last 6 Months</option>
+                <option value="this_year">This Year</option>
+                <option value="last_year">Last Year</option>
                 <option value="all_time">All Time</option>
             </select>
         </div>
@@ -66,7 +123,7 @@ function Dashboard({
       </div>
 
       {error && (
-        <div className="error-message card" style={{ backgroundColor: '#BE123C', color: 'white', marginBottom: '1rem' }}>
+        <div className="error-message card" style={{ backgroundColor: '#B92727', color: 'white', marginBottom: '1rem' }}>
           <p>{error}</p>
         </div>
       )}
@@ -87,56 +144,80 @@ function Dashboard({
           </div>
       ) : (
           <div className="grid-layout">
-              {/* Listening Time card */}
+              {/* Fixed Listening Time card showing all timeframes */}
               <StatCard title="Listening Time" loading={loadingListeningTime}>
-                <p className="stat-text">Last 24 Hours: <span className="stat-value">{minutesListened24Hrs}</span> minutes</p>
-                <p className="stat-text">Last 7 Days: <span className="stat-value">{minutesListened7Days}</span> minutes</p>
-                <p className="stat-text">Last 30 Days: <span className="stat-value">{minutesListened30Days}</span> minutes</p> 
-                <p className="stat-text">Last 90 Days: <span className="stat-value">{minutesListened90Days}</span> minutes</p>
-                <p className="stat-text">Last 6 Months: <span className="stat-value">{minutesListened6Months}</span> minutes</p> 
-                <p className="stat-text">Last 1 Year: <span className="stat-value">{minutesListened1Year}</span> minutes</p> 
-                <p className="stat-text">All Time: <span className="stat-value">{minutesListenedAllTime}</span> minutes</p> 
-                <p className="note-text">(Data sourced from your backend's historical collection.)</p>
+                <p className="stat-text">Today: <span className="stat-value">{minutesListenedToday ?? 0}</span> minutes</p> 
+                <p className="stat-text">Yesterday: <span className="stat-value">{minutesListenedYesterday ?? 0}</span> minutes</p> 
+                <p className="stat-text">This Week: <span className="stat-value">{minutesListenedThisWeek ?? 0}</span> minutes</p> 
+                <p className="stat-text">Last Week: <span className="stat-value">{minutesListenedLastWeek ?? 0}</span> minutes</p> 
+                <p className="stat-text">This Month: <span className="stat-value">{minutesListenedThisMonth ?? 0}</span> minutes</p> 
+                <p className="stat-text">Last Month: <span className="stat-value">{minutesListenedLastMonth ?? 0}</span> minutes</p> 
+                <p className="stat-text">Last 3 Months: <span className="stat-value">{minutesListenedLast3Months ?? 0}</span> minutes</p> 
+                <p className="stat-text">Last 6 Months: <span className="stat-value">{minutesListenedLast6Months ?? 0}</span> minutes</p> 
+                <p className="stat-text">This Year: <span className="stat-value">{minutesListenedThisYear ?? 0}</span> minutes</p> 
+                <p className="stat-text">Last Year: <span className="stat-value">{minutesListenedLastYear ?? 0}</span> minutes</p>
+                <p className="stat-text">All Time: <span className="stat-value">{minutesListenedAllTime ?? 0}</span> minutes</p>
+                <p className="note-text">(Data sourced from your listening data since connecting to EchoStats.)</p>
               </StatCard>
 
-              {/* Top Artists (Historical) */}
+              {/* Top Artists for selected timeframe */}
               <StatCard
-                title={`Top Artists (${selectedTimeframe === 'all_time' ? 'All Time' : `Last ${selectedTimeframe.replace('days', ' Days').replace('months', ' Months').replace('year', ' Year').replace('hrs', ' Hours')}`})`}
+                title={`Top Artists (${formatTimeframeDisplay(selectedTimeframe)})`}
                 loading={loadingTopArtists}
                 emptyMessage="No top artists found for this period. Keep listening to populate!"
               >
                 {console.log("Dashboard: Rendering Top Artists. historicalTopArtists:", historicalTopArtists)}
-                {historicalTopArtists && historicalTopArtists.length > 0 ? (
+                {!hasListeningData() ? (
+                  <div className="no-data-message">
+                    <p className="stat-text">No listening data for {formatTimeframeDisplay(selectedTimeframe).toLowerCase()}.</p>
+                    <p className="note-text">Keep listening to Spotify to see your stats here!</p>
+                  </div>
+                ) : historicalTopArtists && historicalTopArtists.length > 0 ? (
                     <ul>
                         {historicalTopArtists.map((artist) => (
                             <li key={artist.id} className="list-item">
                                 {artist.images && artist.images[0] && (
                                     <img src={artist.images[0].url} alt={artist.name} className="artist-image" />
                                 )}
-                                <span>{artist.name}</span>
+                                <div className="list-item-content">
+                                    <div className="list-item-title">{artist.name}</div>
+                                </div>
                                 {artist.total_minutes_listened !== undefined && (
-                                    <span className="list-item-detail"> ({artist.total_minutes_listened} min)</span>
+                                    <span className="list-item-detail">{artist.total_minutes_listened} min</span>
                                 )}
                             </li>
                         ))}
                     </ul>
                 ) : (
-                    <p className="stat-text">No top artists found since you connected to EchoStats. Keep listening to populate!</p>
+                    <p className="stat-text">No top artists found for {formatTimeframeDisplay(selectedTimeframe).toLowerCase()}. Keep listening to populate!</p>
                 )}
               </StatCard>
 
-              {/* Top Songs (Historical) */}
+              {/* Top Songs for selected timeframe */}
               <StatCard
-                title={`Top Songs (${selectedTimeframe === 'all_time' ? 'All Time' : `Last ${selectedTimeframe.replace('days', ' Days').replace('months', ' Months').replace('year', ' Year').replace('hrs', ' Hours')}`})`}
+                title={`Top Songs (${formatTimeframeDisplay(selectedTimeframe)})`}
                 loading={loadingTopSongs}
                 emptyMessage="No top songs found for this period. Keep listening to populate!"
               >
                 {console.log("Dashboard: Rendering Top Songs. historicalTopSongs:", historicalTopSongs)}
-                {historicalTopSongs && historicalTopSongs.length > 0 ? (
+                {!hasListeningData() ? (
+                  <div className="no-data-message">
+                    <p className="stat-text">No listening data for {formatTimeframeDisplay(selectedTimeframe).toLowerCase()}.</p>
+                    <p className="note-text">Keep listening to Spotify to see your stats here!</p>
+                  </div>
+                ) : historicalTopSongs && historicalTopSongs.length > 0 ? (
                     <ul>
-                        {historicalTopSongs.map((track) => (
-                            <li key={track.id} className="stat-text">
-                                {track.name} by <span className="song-artist-name">{track.artists.map(a => a.name).join(', ')}</span>
+                        {(Array.isArray(historicalTopSongs) ? historicalTopSongs : []).map((track) => (
+                            <li key={track.id} className="list-item">
+                                {track.images && track.images[0] && (
+                                    <img src={track.images[0].url} alt={track.name} className="album-image" style={{ borderRadius: '5px' }} />
+                                )}
+                                <span>
+                                    {track.name} by{" "}
+                                    <span className="song-artist-name">
+                                        {track.artists.map(a => a?.name)?.join(', ') || 'Unknown Artist'}
+                                    </span>
+                                </span>
                                 {track.total_minutes_listened !== undefined && (
                                     <span className="list-item-detail"> ({track.total_minutes_listened} min)</span>
                                 )}
@@ -144,30 +225,35 @@ function Dashboard({
                         ))}
                     </ul>
                 ) : (
-                    <p className="stat-text">No top songs found since you connected to EchoStats. Keep listening to populate!</p>
+                    <p className="stat-text">No top songs found for {formatTimeframeDisplay(selectedTimeframe).toLowerCase()}. Keep listening to populate!</p>
                 )}
               </StatCard>
 
-              {/* Top Albums (Historical) */}
+              {/* Top Albums for selected timeframe */}
               <StatCard
-                title={`Top Albums (${selectedTimeframe === 'all_time' ? 'All Time' : `Last ${selectedTimeframe.replace('days', ' Days').replace('months', ' Months').replace('year', ' Year').replace('hrs', ' Hours')}`})`}
+                title={`Top Albums (${formatTimeframeDisplay(selectedTimeframe)})`}
                 loading={loadingTopAlbums}
                 emptyMessage="No top albums found for this period. Keep listening to populate!"
               >
                 {console.log("Dashboard: Rendering Top Albums. historicalTopAlbums:", historicalTopAlbums, "Type:", typeof historicalTopAlbums, "isArray:", Array.isArray(historicalTopAlbums))}
-                {historicalTopAlbums && historicalTopAlbums.length > 0 ? (
+                {!hasListeningData() ? (
+                  <div className="no-data-message">
+                    <p className="stat-text">No listening data for {formatTimeframeDisplay(selectedTimeframe).toLowerCase()}.</p>
+                    <p className="note-text">Keep listening to Spotify to see your stats here!</p>
+                  </div>
+                ) : historicalTopAlbums && historicalTopAlbums.length > 0 ? (
                     <ul>
-                        {/* EXTREMELY DEFENSIVE MAP:
-                            - Check if historicalTopAlbums is an array and not null/undefined.
-                            - Use nullish coalescing (?? []) to provide an empty array if it's ever null/undefined.
-                            - Use optional chaining (?.) for nested properties to avoid errors.
-                        */}
-                        {(Array.isArray(historicalTopAlbums) ? historicalTopAlbums : []).map((album, index) => ( // CRUCIAL FIX HERE: Use index as fallback key
-                            <li key={album?.id || index} className="list-item"> {/* Use optional chaining and index fallback */}
-                                {album?.images?.[0]?.url && ( // Optional chaining
+                        {(Array.isArray(historicalTopAlbums) ? historicalTopAlbums : []).map((album, index) => (
+                            <li key={album?.id || index} className="list-item">
+                                {album?.images?.[0]?.url && (
                                     <img src={album.images[0].url} alt={album.name} className="album-image" style={{ borderRadius: '5px' }} />
                                 )}
-                                <span>{album?.name || 'Unknown Album'} by {album?.artists?.map(a => a?.name)?.join(', ') || 'Unknown Artist'}</span> {/* Optional chaining and fallbacks */}
+                                <span>
+                                    {album?.name || 'Unknown Album'} by{" "}
+                                    <span className="album-artist-name">
+                                        {album?.artists?.map(a => a?.name)?.join(', ') || 'Unknown Artist'}
+                                    </span>
+                                </span>
                                 {album?.total_minutes_listened !== undefined && (
                                     <span className="list-item-detail"> ({album.total_minutes_listened} min)</span>
                                 )}
@@ -175,21 +261,26 @@ function Dashboard({
                         ))}
                     </ul>
                 ) : (
-                    <p className="stat-text">No top albums found since you connected to EchoStats. Keep listening to populate!</p>
+                    <p className="stat-text">No top albums found for {formatTimeframeDisplay(selectedTimeframe).toLowerCase()}. Keep listening to populate!</p>
                 )}
               </StatCard>
 
-              {/* Genre Breakdown (Historical) */}
+              {/* Genre Breakdown for selected timeframe */}
               <StatCard
-                title={`Genre Breakdown (${selectedTimeframe === 'all_time' ? 'All Time' : `Last ${selectedTimeframe.replace('days', ' Days').replace('months', ' Months').replace('year', ' Year').replace('hrs', ' Hours')}`})`}
+                title={`Genre Breakdown (${formatTimeframeDisplay(selectedTimeframe)})`}
                 loading={loadingGenreBreakdown}
                 emptyMessage="No genre data found for this period. Keep listening to populate!"
               >
                 {console.log("Dashboard: Inside Genre Breakdown StatCard. historicalGenreBreakdown BEFORE MAP:", historicalGenreBreakdown, "Type:", typeof historicalGenreBreakdown, "isArray:", Array.isArray(historicalGenreBreakdown))}
-                {historicalGenreBreakdown && historicalGenreBreakdown.length > 0 ? (
+                {!hasListeningData() ? (
+                  <div className="no-data-message">
+                    <p className="stat-text">No listening data for {formatTimeframeDisplay(selectedTimeframe).toLowerCase()}.</p>
+                    <p className="note-text">Keep listening to Spotify to see your stats here!</p>
+                  </div>
+                ) : historicalGenreBreakdown && historicalGenreBreakdown.length > 0 ? (
                     <ul>
-                        {historicalGenreBreakdown.map((genreItem, index) => (
-                            <li key={genreItem.genre || index} className="stat-text" style={{ marginBottom: '5px' }}>
+                        {(Array.isArray(historicalGenreBreakdown) ? historicalGenreBreakdown : []).map((genreItem, index) => (
+                            <li key={genreItem.genre || index} className="list-item"> 
                                 <span style={{ textTransform: 'capitalize' }}>{genreItem.genre.replace(/-/g, ' ')}</span>
                                 {genreItem.total_minutes !== undefined && (
                                     <span className="list-item-detail"> ({genreItem.total_minutes} min)</span>
@@ -198,7 +289,7 @@ function Dashboard({
                         ))}
                     </ul>
                 ) : (
-                    <p className="stat-text">No genre data found since you connected to EchoStats. Keep listening to populate!</p>
+                    <p className="stat-text">No genre data found for {formatTimeframeDisplay(selectedTimeframe).toLowerCase()}. Keep listening to populate!</p>
                 )}
               </StatCard>
           </div>
